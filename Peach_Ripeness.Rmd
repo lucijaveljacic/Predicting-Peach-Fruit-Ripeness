@@ -1,0 +1,609 @@
+---
+title: "Otkrivanje znanja u podacima<br>Završni projekt na skupu podataka o breskvama"
+
+output: 
+  html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+devtools::source_gist("c83e078bf8c81b035e32c3fc0cf04ee8", 
+                      filename = 'render_toc.R')
+```
+
+##### Autori:
+Patricija Juračić, Lucija Veljačić
+
+##### Mentor:
+prof. dr. sc. Maja Matetić
+
+##### Kolegij:
+Otkrivanje znanja u podacima<br>
+Sveučilište u Rijeci, Odjel za informatiku<br>
+Veljača 2021.
+
+## Sadrzaj
+```{r toc, echo=FALSE} 
+render_toc("OZUP_Zavrsni_projekt.Rmd", Encoding("UTF-8"))
+```
+
+
+## 1. Zadatak
+
+Projekt je izrađen u sklopu kolegija <i>Otkrivanje znanja u podacima.</i> Korišten je programski jezik R te program RStudio.
+
+Projekt je izrađen na skupu podataka o breskvama te je cilj izvršiti predviđanje zrelosti voća na temelju nekog alternativnog parametra. Za predviđanje će se koristiti logistička regresija i slučajne šume te će se vrednovati točnost predviđanja zrelosti pomoću navedenih postupaka. Zatim će se primijeniti postupci za dobivanje objašnjenja modela i interpretirati dobiveni rezultati.
+<br><br>
+
+
+## 2. Skup podataka
+
+<b>Skup podataka: </b><i>peaches_100_ALL_1.xlsx</i><br>
+
+Skup podataka je nebalansiran, što znači da u skupu postoji znatno više zrelih breskvi nego nezrelih, stoga će biti potrebno riješiti problem nebalansiranosti podataka, za što će se koristiti postupak ROSE. O njemu će detaljnije biti riječi u nastavku. Datoteka koja sadrži skup podataka je za potrebe daljnjeg korištenja pohranjena kao .csv.
+<br>
+
+### 2.1 Opis varijabli
+
+
+Ime varijable | Opis | Ljestvica
+--- | --- | --- 
+num | Redni broj zapisa u skupu podataka 
+volume | Volumen breskve u cm3 
+mass | Masa breskve u gramima
+firm | Tvrdoća breskve<br> `-` pokazatelj zrelosti - što je manja tvrdoća, to je breskva zrelija
+TSS | Težinski postotak šećera u voću<br> `-` Total Soluble Solids
+TA | Količina kiseline u plodu<br> `-` Titratable Acidity
+Zs | Impedancija<br> `-` otpor električne struje breskve
+Theta | Fazni kut između struje i napona (imaginarni dio vektora impedancije)
+AE | Appearance evaluation <br> `-` subjektivna procjena postotka prekrivenosti ploda bojom | `F`: 0-25% <br> `E`: 25-50% <br> `D`: 50-70% <br> `C`: 70-80% <br> `B`: 80-90% <br> `A`: 90-100%
+Color | Boja breskve | `zeleno`: manji broj <br> `crveno`: veći broj
+dE2000 | Delta E <br> `-` razlika u boji <br> `-` brojčana vrijednost koja predstavlja udaljenost između dvije boje | `1,0`: najmanja razlika u boji koju ljudsko oko može primijetiti <br> `<1,0`: razlika neprimjetna ljudskom oku <br> `>1,0`: razlika primjetna ljudskom oku
+L1, A1, B1 | CIELAB komponente najtamnijeg dijela breskve <br> `-` sustav prikazivanja boja <br> `-` boje prikazuje u pravokutnom Kartezijevom koordinatnom sustavu
+C1, H1 | CIELCh komponente najtamnijeg dijela breskve <br> `-` baziran na CIELAB sustavu <br> `-` boje prikazuje u polarnom sustavu
+WI_CIE1 | CIE Whiteness Index najtamnijeg dijela breskve <br> `-` bjelina je mjera za to koliko se površina podudara sa svojstvima savršenog reflektirajućeg difuzora
+L2, A2, B2 | CIELAB komponente najsvjetlijeg dijela breskve <br> `-` sustav prikazivanja boja <br> `-` boje prikazuje u pravokutnom Kartezijevom koordinatnom sustavu
+C2, H2 | CIELCh komponente najsvjetlijeg dijela breskve <br> `-` baziran na CIELAB sustavu <br> `-` boje prikazuje u polarnom sustavu
+WI_CIE2 | CIE Whiteness Index najsvjetlijeg dijela breskve <br> `-` bjelina je mjera za to koliko se površina podudara sa svojstvima savršenog reflektirajućeg difuzora
+<br><br>
+
+## 3. Priprema podataka
+
+### 3.1 Ucitavanje skupa podataka
+
+Za početak se učitava datoteka <b>peaches_100_ALL_1.csv</b>. 
+
+Prilikom učitavanja datoteke potrebno je naznačiti da se kao decimalni separator koristi zarez kako bi se podaci ispravno učitali te izbjegli daljnji problemi prilikom obrade podataka. 
+
+```{r}
+data = read.csv("peaches_100_ALL_1.csv", header = T, sep = ";", dec = ",", encoding = 'UTF-8', stringsAsFactors = FALSE)
+```
+<br>
+
+### 3.2 Priprema podataka za rad
+
+```{r}
+head(data)
+```
+Vidljivo je da su podaci u stupcu AE u tekstualnom obliku pa će se pretvoriti u numerički radi lakše daljnje obrade.
+
+6 -> F: 0-25%<br>
+5 -> E: 25-50%<br>
+4 -> D: 50-70% <br>
+3 -> C: 70-80% <br>
+2 -> B: 80-90% <br>
+1 -> A: 90-100%<br>
+
+```{r, message=FALSE}
+library(dplyr)
+```
+
+```{r}
+data$AE = as.numeric(c("A" = "1", "B" = "2", "C" = "3", "D" = "4", "E" = "5", "F" = "6")[data$AE])
+```
+
+Skup podataka sadrži 23 varijable i 100 redaka (opservacija).
+Vidljivo je da su sve u numeričkom obliku, budući da su vrijednosti varijable AE prethodno pretvorene u numerički oblik.
+
+```{r}
+str(data)
+```
+
+```{r}
+summary(data)
+```
+
+Budući da prvi stupac skupa podataka sadrži redne brojeve zapisa u skupu podataka koji nisu potrebni za daljnji rad, on je uklonjen.
+
+```{r}
+data = subset(data, select=-c(1))
+```
+
+Cilj je rada predvidjeti zrelost voća, a varijabla <i>firm</i> se koristi kao pokazatelj zrelosti voća. Ona sadrži decimalne vrijednosti koje određuju tvrdoću voćki na način da manji broj predstavlja manju tvrdoću pa je time i promatrana breskva zrelija. Što je taj broj veći, breskva je tvrđa, što je čini nezrelijom.
+
+Od varijable <i>firm</i> kreirana je nova varijabla <i>zrelost</i> koja poprima vrijednost <b>0 za zrele</b> i vrijednost <b>1 za nezrele</b> breskve. Kao zrele breskve uzimaju se svi zapisi iz skupa podataka kod kojih je vrijednost varijable <i>firm</i> manja ili jednaka 4, budući da su te breskve mekše. One kod kojih je vrijednost varijable <i>firm</i> veća od 4 su tvrđe te time i nezrelije pa će se za potrebe ovog rada promatrati kao nezrele voćke.
+
+Novostvoreni stupac <i>zrelost</i> postavljen je na 4. poziciju, odmah nakon varijable <i>firm</i>.
+
+```{r}
+data = data %>%
+  mutate(zrelost = as.factor(ifelse(firm<=4, 0, 1)))
+data = data %>% 
+  select(1:3, zrelost, everything())
+```
+
+```{r}
+head(data)
+```
+
+Tim postupkom skup podataka je podijeljen na 92 zrele i 8 nezrelih breskvi.
+
+```{r}
+summary(data$zrelost)
+```
+<br>
+
+### 3.2 Podjela na skupove za treniranje i testiranje 
+
+Kao što je ranije spomenuto, skup podataka sadrži 100 opservacija, pri čemu 92 čine zrele breskve, a preostalih 8 su nezrele breskve.
+
+Za potrebe treniranja i testiranja modela strojnog učenja skup podataka podijeljen je u skupove za treniranje i testiranje u omjeru 80:20.
+
+```{r}
+set.seed(123)
+idx = sample(1:nrow(data), round(0.8*nrow(data)))
+train = as.data.frame(data[idx,])
+test = as.data.frame(data[-idx,])
+test_y = data$zrelost[-idx]
+```
+
+Skup podataka za treniranje sadrži 74 zrele i 6 nezrelih breskvi.
+
+```{r}
+summary(train$zrelost)
+```
+
+Skup podataka za testiranje sadrži 18 zrelih i 2 nezrele breskve.
+
+```{r}
+summary(test$zrelost)
+```
+<br><br>
+
+## 4. Izgradnja modela na nebalansiranim podacima
+
+Kao što je ranije spomenuto, skup podataka koji se koristi za rad je nebalansiran. Kako bi se ilustrirao problem kod takvih skupova podataka i usporedili rezultati, modeli slučajne šume i logističke regresije izgradit će se i na nebalansiranom skupu.
+
+### 4.1 Random forest
+
+Algoritam Random forest (Slučajne šume) koristi se za probleme klasifikacije i regresije, a predstavio ga je Breiman 2001. godine. Radi se o metodi nadziranog učenja koja rješava problem overfitinga kojem su sklona stabla odluka. Imaju visoku točnost predviđanja i široku primjenu.
+
+Slučajne šume funkcioniraju na način da grade veći broj stabala odluke na skupu za treniranje. Tijekom grananja može se koristiti samo jedan od prediktora iz skupa koji je izabran slučajno.
+
+Slučajne šume ne koriste jake prediktore za velika grananja, što donosi puno bolje rezultate jer se jaki prediktori javljaju kod korijena stabla tijekom grananja, a to u drugim slučajevima (npr. bagging) ne dovodi do dobrih rezultata. Dakle, slučajne šume mogu se vrlo dobro primijeniti kod gradnje modela s velikim brojem prediktora u korelaciji.
+
+#### Izgradnja modela
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(caret)
+library(randomForest)
+```
+
+```{r}
+fit_control = trainControl(method="repeatedcv", number=5, repeats=3)
+
+set.seed(123)
+rf_model = train(zrelost~.-firm, data=train, method="rf", preProcess=c("scale", "center"), trControl=fit_control, verbose=FALSE, importance=TRUE)
+
+rf_model
+```
+
+Nakon izgradnje modela on se testira na testnom skupu podataka i prikazuje se matrica konfuzije.
+
+```{r}
+test_predict = predict(rf_model, test)
+confusionMatrix(test_predict, as.factor(test$zrelost))
+```
+
+Dobivena točnost modela je 90%, do čega dolazi zbog toga što je 90% breskvi zrelo, dok se sve nezrele također predviđaju kao zrele breskve, što predstavlja pogrešku od 10%. Do toga dolazi upravo zbog nebalansiranosti podataka, odnosno jer je udio nezrelih breskvi premalen da bi ih model naučio prepoznati.
+
+Zatim se računa važnost varijabli, pri čemu su kao najvažnije navedene zs, C1 i theta.
+
+```{r}
+varImp(rf_model)
+
+plot(varImp(rf_model, varImp.train=FALSE), top=10, main="Variable importance")
+```
+
+
+### 4.2 Logisticka regresija
+
+Logistička regresija upotrebljava se za rješavanje problema klasifikacije pri čemu zavisna varijabla poprima vrijednosti čija je suma uvijek 1. U našem primjeru može poprimiti vrijednosti 0 ili 1 pri čemu je breskva ili zrela (0) ili nezrela (1). Osim zavisne varijable postoji barem jedna nezavisna, prediktorska varijabla.
+
+#### Izgradnja modela
+
+Gradi se model logističke regresije i pregledavaju se njegova svojstva. Porodica modela specificira se kao binominalna jer se radi o logističkoj regresiji (inače bi se izvela linearna regresija). 
+
+Kao prediktor koristi se zs koji se kod modela slučajne šume pokazao kao najznačajnija varijabla. 
+
+```{r logisticka}
+log_model=glm(zrelost~ zs, data=train, family="binomial")
+summary(log_model)
+```
+
+Zatim se izgrađeni model koristi za predikciju na testnom skupu podataka i gradi se matrica konfuzije.
+
+```{r include="FALSE"}
+log_predict = predict(log_model, test, type="response")
+log_pred_y = rep("0", length(test_y))
+log_pred_y[log_predict>0.5]="1"
+matrica_lr = table(log_pred_y,test_y)
+tocnost_lr = sum(diag(matrica_lr))/sum(matrica_lr)
+```
+
+```{r}
+matrica_lr
+tocnost_lr
+```
+
+Kao i kod modela slučajne šume, sve su nezrele breskve predviđene kao zrele i dobivena točnost također iznosi 90%.
+<br><br>
+
+## 5. Balansiranje podataka - ROSE
+
+Postupak <b>ROSE</b> koristi se za generiranje umjetnih podataka slučajnim preuzorkovanjem postojećih pojavljivanja podataka kojih manjka (eng. <i><b>R</b>andomly <b>O</b>ver <b>S</b>ampling <b>E</b>xamples</i>).
+
+Paket ROSE sadrži funkcije koje rješavaju probleme binarne klasifikacije u slučajevima kada skup podataka nije balansiran, odnosno kada postoje nebalansirane klase. Umjetno stvoreni uzorci generiraju se prema pristupu <i>smoothed bootstrap</i> što omogućava rad s rijetkom klasom i njeno predviđanje. 
+
+Postupak omogućava definiranje željene veličine novostvorenog uzorka (N). Ukoliko se veličina ne zada, rezultat će biti uzorak čija veličina odgovara duljini zavisne varijable definirane unutar formule, što znači da će se povećati zastupljenost manjinske klase, a smanjiti zastupljenost većinske.
+<br>
+
+### 5.1 Primjena postupka ROSE
+
+Za korištenje postupka ROSE potrebno je instalirati istoimeni paket i učitati biblioteku naziva <i>ROSE</i>.
+
+```{r, message=FALSE}
+#install.packages("ROSE")
+library(ROSE)
+```
+
+Postupkom ROSE podaci nad kojima se vrši obrada (skup podataka za treniranje modela) će se modificirati te će se takav novostvoreni skup pohraniti u varijablu <i>balanced</i>. Budući da se želi zadržati početni omjer skupova za treniranje i testiranje koji iznosi 80:20, nije zadan parametar N pa će novostvoreni skup također sadržavati 80 zapisa.
+
+```{r, warning=FALSE}
+balanced = ROSE(zrelost~.-firm, data=train, seed=3)$data
+```
+
+Vidljivo je da skup sada sadrži podatke o zrelim i nezrelim breskvama u omjeru 50:50 (40 zrelih i 40 nezrelih breskvi), dok je ranije sadržavao podatke o 74 zrele i samo 6 nezrelih breskvi.
+
+```{r}
+table(balanced$zrelost)
+str(balanced)
+```
+<br>
+
+
+### 5.2 Random forest
+
+Nakon što su podaci balansirani, ponovno se gradi model slučajne šume, ali sada se trenira na balansiranom skupu podataka. Potom se vrši predikcija na testnom skupu.
+
+```{r, echo=FALSE}
+set.seed(123)
+rfb_model = train(zrelost~.-firm, data=balanced, method="rf", preProcess=c("scale", "center"), trControl=fit_control, verbose=FALSE, importance=TRUE)
+
+rfb_model
+testb_predict = predict(rfb_model, test)
+```
+
+Dobivena točnost modela ponovno je 90%, no ovoga su puta nezrele breskve iz testnog skupa ispravno klasificirane. Pogreška od 10% odnosi se na dvije pogrešno klasificirane zrele breskve koje su klasificirane kao nezrele. Kao prediktori ponovno su korištene sve varijable iz skupa podataka osim varijable <i>firm</i>, kao i u prvom modelu, kako bi eventualna razlika u rezultatima bila isključivo rezultat balansiranja podataka.
+
+Može se zaključiti da je primjena ROSE postupka bila uspješna, a točnost <i>Random forest</i> algoritma u iznosu od 90% u ovom je slučaju opravdana, budući da on sada ispravno klasificira čak i nezrele breskve.
+
+```{r}
+confusionMatrix(testb_predict, as.factor(test$zrelost))
+```
+
+Najznačajnije varijable u modelu sada su zs, TA i B1. Varijabla zs zadržala je prvo mjesto, dok su TA i B1 zamijenile C1 i thetu koje su zauzele 2. i 3. mjesto po važnosti prilikom korištenja nebalansiranog skupa podataka.
+
+```{r, echo=FALSE}
+plot(varImp(rfb_model, varImp.train=FALSE), top=10, main="Variable importance")
+```
+
+
+### 5.3 Logisticka regresija
+
+#### Logisticka regresija s prediktorom zs
+
+Kao prediktor koristi se zs koji se kod modela slučajne šume ponovno pokazao kao najznačajnija varijabla.
+ 
+```{r}
+logb_model=glm(zrelost~ zs, data=balanced, family="binomial" )
+summary(logb_model)
+```
+
+Zatim se izgrađeni model koristi za predikciju na testnom skupu podataka i gradi se matrica konfuzije.
+
+```{r, include="FALSE"}
+logb_predict = predict(logb_model, test, type="response")
+```
+
+```{r, include="FALSE"}
+logb_pred_y = rep("0", length(test_y))
+logb_pred_y[logb_predict>0.5]="1"
+```
+
+```{r, include="FALSE"}
+matrica_lrb = table(logb_pred_y,test_y)
+tocnost_lrb = sum(diag(matrica_lrb))/sum(matrica_lrb)
+```
+
+```{r, echo="FALSE"}
+matrica_lrb
+tocnost_lrb
+```
+
+Dobivena točnost modela logističke regresije iznosi 80%, što je za 10% niže od rezultata dobivenog na nebalansiranim podacima. Međutim, ovakav je rezultat uspješniji budući da su nezrele breskve ispravno klasificirane, što je vidljivo iz matrice konfuzije. 
+
+Kao i kod gradnje modela slučajne šume, za gradnju modela logističke regresije na balansiranim i nebalansiranim podacima korišten je isti prediktor, varijabla <i>zs</i> pa je dobivena razlika u rezultatu isključivo rezultat balansiranja podataka ROSE postupkom.
+<br><br>
+
+#### Tocnost logisticke regresije za razlicite prediktore
+
+Prediktor | Točnost | Točnost za nezrele | Napomena
+--- | --- | --- | --- 
+B1 | 85% | 0% |
+color | 85% | 100% | nije dobar prediktor jer Pr puno veći od 0.05
+<b>zs</b> | <b>80%</b> | <b>100%</b> |
+L1 | 80% | 50% |
+WI_CIE1 | 80% | 0% |
+A1 | 75% | 50% |
+C1 | 75% | 0% |
+zs+TA+B1 | 70% | 100% | 3 najznačajnije varijable u Random forest
+theta | 70% | 100% |
+L2 | 70% | 100% |
+C2 | 70% | 100% |
+
+
+#### Logisticka regresija sa svim prediktorima
+
+U nastavku rada dan je pregled dva postupka objašnjenja modela od kojih se jedan odnosi na važnost varijabli, stoga je istreniran model logističke regresije za kojeg su se kao prediktori koristile sve varijable iz skupa podataka (osim <i>firm</i> koji je u visokoj korelaciji s varijablom <i>zrelost</i>). Na taj način moguće je usporediti koji će prediktori biti navedeni kao značajni u oba postupka.
+
+
+```{r, echo=FALSE}
+logbsve_model=glm(zrelost~.-firm, data=balanced, family="binomial")
+summary(logbsve_model)
+
+logbsve_predict = predict(logbsve_model, test, type="response")
+
+logbsve_pred_y = rep("0", length(test_y))
+logbsve_pred_y[logbsve_predict>0.5]="1"
+
+matrica_lrbsve = table(logbsve_pred_y,test_y)
+matrica_lrbsve
+
+tocnost_lrbsve = sum(diag(matrica_lrbsve))/sum(matrica_lrbsve)
+
+test$zrelost = as.numeric(as.character(test$zrelost))
+tocnost_lrbsve
+```
+
+Dobivena točnost iznosi 85% što je ujedno i najbolji rezultat logističke regresije dobiven nad balansiranim skupom podataka. Ujedno su i sve nezrele breskve ispravno klasificirane.
+
+Kao najznačajnije varijable označene su <i>volume</i>, <i>theta</i> i <i>H1</i>.
+<br><br>
+
+## 6. Postupci objasnjenja modela
+
+Postupci objašnjenja modela mogu biti razni i koriste se za bolje shvaćanje izgrađenog modela i predikcija koje on daje. 
+
+U ovom radu obrađena su dva postupka za objašnjenje modela, i to <b>Mjere performansi modela</b> te <b>Mjere važnosti varijabli</b>. Za korištenje ovih postupaka potreban je paket <i>DALEX</i> čije se funkcije koriste za probleme binarne klasifikacije. 
+<br>
+
+### 6.1 Mjere performansi modela
+
+Prema Leu Breimanu, performanse modela mogu se mjeriti iz perspektive kakvoće prilagodbe modela (eng. <i>goodness-of-fit</i> ili <i>GoF</i>) ili kakvoće predikcije (eng. <i>goodness-of-prediction</i> ili <i>GoP</i>). Pri tome se kakvoća prilagodbe obično mjeri kod objašnjavajućih modela i odgovara na pitanje koliko dobro predviđanja dobivena modelom odgovaraju vrijednostima zavisnih varijabli iz opservacija na kojima se gradio model. Suprotno, kakvoća predikcije mjeri koliko dobro model predviđa vrijednost zavisne varijable. 
+
+Logika iza mjerenja performansi modela je u tome da bi kod idealnog modela vrijednosti predikcije modela i stvarne vrijednosti zavisnih varijabli trebale biti jednake. Kako to obično nije slučaj, mjere se performanse modela na način da se uspoređuju predikcije modela s poznatim vrijednostima zavisnih varijabli u skupu podataka te se bilježi koliko je odstupanje. Idealno, način mjerenja performansi modela birao bi se prije no što se model izgradi te bi se on potom optimizirao za mjeru, no u praksi to obično nije tako, već se koristi više načina mjerenja, a odabire ih se nakon što je model već izgrađen.
+<br><br>
+
+#### Mjerenje performansi izgradenih modela
+
+Za početak je potrebno instalirati paket <i>DALEX</i>, a zatim pozvati i istoimenu biblioteku.
+
+```{r, message=FALSE}
+#install.packages("DALEX")
+library("DALEX")
+```
+
+Zatim se pomoću funkcije <b>explain()</b> iz DALEX paketa konstruiraju "objašnjivači" (eng. <i>explainers</i>). Funkciji se prosljeđuje ime modela koji je potrebno objasniti, testni skup podataka, kao i vrijednosti zavisne varijable iz testnog skupa. Za logističku regresiju potrebno je još definirati da se radi o klasifikaciji. Konstruiranje takvog "objašnjivača" ujedno daje i pregled pojedinih podataka o modelu i skupu podataka nad kojim je kreiran.
+
+```{r}
+explain_lrzs = explain(model = logb_model,
+                     data = test,
+                     y = test$zrelost,
+                     type = "classification",
+                     label = "Logisticka regresija za zs")
+```
+
+Nakon toga se funkcijom <i>model_performance()</i> računaju mjere performansi modela. Konkretno, funkcija vraća objekt klase model_performance() koji sadrži nekoliko mjera performansi modela, kao i data frame u kojem su pohranjene stvarne i predviđene vrijednosti zavisne varijable zajedno s njihovim razlikama, odnosno rezidualima. Izračunate mjere performansi modela su odziv (eng. <i>recall</i>), preciznost (eng. <i>precision</i>), F1 score, točnost modela (eng. <i>accuracy</i>) i površina ispod krivulje ili auc (eng. <i>Area Under Curve</i>).
+
+```{r}
+(eva_lrzs = DALEX::model_performance(explain_lrzs))
+```
+
+Isti postupak provodi se i za preostala dva modela, logističku regresiju sa svim varijablama te model slučajne šume.
+
+```{r}
+explain_lrsve = explain(model = logbsve_model,
+                     data = test,
+                     y = test$zrelost,
+                     type = "classification",
+                     label = "Logisticka regresija za sve varijable")
+(eva_lrsve = DALEX::model_performance(explain_lrsve)) 
+```
+
+```{r}
+explain_rf = explain(model = rfb_model,
+                     data = test,
+                     y = test$zrelost,
+                     label = "Random forest")
+(eva_rf = DALEX::model_performance(explain_rf))
+```
+
+Iako model slučajne šume ima najveću točnost u iznosu od 90%, on ima i najmanju površinu ispod krivulje, dok modeli logističke regresije imaju točnosti 85% (sve varijable kao prediktori) i 80% (zs kao prediktor), a površina ispod krivulje im je jednaka i iznosi 0.9166. 
+
+Za kraj, vizualiziraju se podaci. Prikazani su histogrami reziduala za sva tri modela, graf s ROC krivuljama i graf odnosa preciznosti i odziva za sva tri modela.
+
+```{r}
+library(ggplot2)
+p1 = plot(eva_lrzs, eva_lrsve, eva_rf, geom="histogram")
+p2 = plot(eva_lrzs, eva_lrsve, eva_rf, geom="roc")
+p3 = plot(eva_lrzs, eva_lrsve, eva_rf, geom="prc")
+library("patchwork")
+p1+p2
+```
+
+```{r, echo=FALSE}
+p3
+```
+
+<br>
+
+### 6.2 Mjere vaznosti varijabli
+
+Glavna je ideja ovog postupka izmjeriti koliko se performanse modela promijene ako se jedna ili više nezavisnih varijabli isključi iz modela ili permutiraju vrijednosti varijable.
+
+Pretpostavka je da ako je varijabla važna, očekuje se da će se permutiranjem njenih vrijednosti performanse modela pogoršati. Što je veća promjena u performansama, to je varijabla važnija. 
+<br><br>
+
+#### Mjerenje vaznosti varijabli za model logisticke regresije
+
+Za mjerenje važnosti varijabli potrebno je, kao i kod mjera performansi modela, koristiti paket <i>DALEX</i> te pozvati istoimenu biblioteku, što je već učinjeno u prethodnom primjeru.
+
+Zatim se također koristi funkcija <b>explain()</b> s jednakim parametrima kao i u prethodnom primjeru.
+
+Mjerit će se važnost varijabli za model logističke regresije koji kao prediktore koristi sve varijable iz skupa podataka.
+
+```{r}
+explain_log = DALEX::explain(model = logbsve_model,
+                     data = test,
+                     y = test$zrelost,
+                     type = "classification",
+                     label = "Logisticka regresija za sve varijable")
+```
+
+Nakon toga se funkcijom <i>model_parts()</i> računaju mjere važnosti varijabli bazirane na permutacijama. Funkciji je obvezno proslijediti argument <i>explainer</i> kojem se dodjeljuje rezultat funkcije <i>explain()</i>. 
+
+Osim toga, za potrebe ovog rada definirana je i vrijednost B koja predstavlja broj permutacija koje će se koristiti u svrhu kalkulacije mjera važnosti varijabli. Defaultna vrijednost za B jednaka je 10. Također, moguće je definirati i broj opservacija iz skupa podataka koje će se koristiti za izračun važnosti varijabli. Defaultna vrijednost iznosi N=1000, a ako se N postavi na NULL koristi se cijeli dataset. Budući da korišteni skup podataka ima samo 100 zapisa, čak i bez definiranja N=NULL bit će korištene sve opservacije iz skupa podataka.
+
+Rezultat korištenja funkcije <i>model_parts()</i> prikazan je u nastavku.
+
+```{r}
+set.seed(123)
+vip = model_parts(explainer = explain_log, B=50)
+vip
+```
+
+Na grafu u nastavku grafički su prikazani rezultati dobiveni funkcijom <i>model_parts()</i>. 
+
+Stupci u grafu predstavljaju srednje vrijednosti mjera važnosti varijabli za svaku pojedinu zavisnu varijablu. Kutijasti dijagrami dodani su stupcima kako bi se dobila ideja o distribuciji vrijednosti mjera kroz sve permutacije.
+
+```{r, echo=FALSE}
+plot(vip)+ggtitle("Mean-variable importance over 50 permutations", "")
+```
+
+Kao najvažnije varijable prikazane su theta, L2, TA, volume, zs i mass.
+<br>
+
+#### Logisticka regresija s "vaznim" varijablama dobivenima metodom za mjerenje vaznosti varijabli
+
+```{r}
+logb_model=glm(zrelost~ theta+L2+TA+volume+zs+mass, data=balanced, family="binomial" )
+summary(logb_model)
+```
+
+```{r, include=FALSE, echo=FALSE}
+logb_predict = predict(logb_model, test, type="response")
+```
+
+```{r include=FALSE, echo=FALSE}
+logb_pred_y = rep("0", length(test_y))
+logb_pred_y[logb_predict>0.5]="1"
+```
+
+```{r echo=FALSE}
+matrica_lrb = table(logb_pred_y,test_y)
+tocnost_lrb = sum(diag(matrica_lrb))/sum(matrica_lrb)
+``` 
+
+```{r echo=FALSE}
+matrica_lrb
+tocnost_lrb
+```
+
+<br>
+
+#### Logisticka regresija s "vaznim" varijablama dobivenim na balansiranom skupu podataka sa svim varijablama kao prediktorima
+
+```{r}
+logbsve_model=glm(zrelost~ volume+theta+H1, data=balanced, family="binomial")
+summary(logbsve_model)
+```
+
+```{r, include=FALSE, echo=FALSE}
+logbsve_predict = predict(logbsve_model, test, type="response")
+```
+
+```{r include=FALSE, echo=FALSE}
+logbsve_pred_y = rep("0", length(test_y))
+logbsve_pred_y[logbsve_predict>0.5]="1"
+```
+
+```{r, echo=FALSE}
+matrica_lrbsve = table(logbsve_pred_y,test_y)
+tocnost_lrbsve = sum(diag(matrica_lrbsve))/sum(matrica_lrbsve)
+``` 
+
+```{r, echo=FALSE}
+matrica_lrbsve
+test$zrelost = as.numeric(as.character(test$zrelost))
+tocnost_lrbsve
+```
+
+<br><br>
+
+## 7. Zakljucak
+
+Zadatak i glavni cilj projekta bio je izvršiti predviđanje zrelosti breskvi na temelju nekog alternativnog parametra gradnjom modela slučajne šume i logističke regresije. Budući da je skup podataka bio nebalansiran, koristio se postupak ROSE kojim je skup podataka za treniranje uspješno izbalansiran. Za kraj su, s ciljem bolje interpretacije modela, primijenjena dva postupka za objašnjenje modela. Njima su mjerene performanse kreiranih modela, kao i važnost varijabli u modelu.
+
+Kako bi se ilustrirao problem nebalansiranosti podataka, modeli slučajne šume i logističke regresije za početak su izgrađeni na originalnom (nebalansiranom) skupu za treniranje. Postignuta je očekivana točnost od 90% za oba modela budući da je to udio zrelih breskvi u skupu podataka, dok su one nezrele zbog malog udjela u skupu jednostavno predviđane kao zrele i upravo se na njih odnosi pogreška od 10%.
+
+Skup za treniranje potom je balansiran postupkom ROSE iz DALEX paketa čime je on modificiran na način da su stvoreni umjetni podaci za manje zastupljenu klasu. To je rezultiralo skupom jednake veličine koji sadrži podatke o zrelim i nezrelim breskvama u omjeru 50:50.
+
+Ponovnom izgradnjom modela za slučajnu je šumu ponovno postignuta točnost od 90% iz matrice konfuzije, no s točno klasificiranim nezrelim breskvama. Pritom su se kao najvažnije varijable istaknule zs, TA i B1 (slijede mass, theta, volume i H1). Za logističku regresiju s odabranim varijablama najbolja je točnost postignuta kada je kao prediktor korištena varijabla zs (80%). Bolja točnost postignuta je kada su se za predikciju koristile sve varijable iz balansiranog skupa te je iznosila 85%. Najznačajnije varijable su volume, theta i H1.
+
+Mjerenjem performansi za ta tri modela dolazi se do saznanja da je AUC viši za modele logističke regresije (0.9167) nego za model slučajne šume (0.8889). Međutim, F1 score i preciznost bolji su za model slučajne šume. Ako se uzme u obzir činjenica da on ima i najvišu točnost, može se reći da je model slučajne šume najuspješniji u predviđanju zrelosti breskvi.
+
+Rezultate dobivene logističkom regresijom nastojalo se poboljšati korištenjem mjera važnosti varijabli pri čemu su se kao najvažnije pokazale theta, L2, TA, volume, zs i mass, ali rezultat je bila lošija točnost modela (75%).
+
+Može se zaključiti da je jedan od najboljih prediktora svakako zs (otpor električne struje breskve), a slijede TA, theta, volume, mass, L2, H1 i B1.
+
+<br>
+
+## 8. Literatura
+
+* https://rstudio.com/wp-content/uploads/2015/02/rmarkdown-cheatsheet.pdf
+* https://readxl.tidyverse.org/
+* https://ucanr.edu/sites/Postharvest_Technology_Center_/files/231231.PDF
+* https://cran.r-project.org/web/packages/ROSE/ROSE.pdf
+* https://www.rdocumentation.org/packages/ROSE/versions/0.0-3/topics/ROSE
+* http://ema.drwhy.ai/modelPerformance.html
+* http://ema.drwhy.ai/featureImportance.html
+* https://stats.stackexchange.com/questions/179329/przz-values-and-the-level-of-significance
+* https://blog.revolutionanalytics.com/2016/08/roc-curves-in-two-lines-of-code.html
+* https://stackoverflow.com/questions/47846685/how-to-plot-roc-curve-in-r-given-only-a-linear-regression-equation
+* https://monashbioinformaticsplatform.github.io/2017-11-16-open-science-training/topics/rmarkdown.html <br>
+* Seminar s vjezbi iz OZUP - Charles Book Club (Juracic, Veljacic) <br>
+* Seminar s predavanja iz OZUP - Mjere performansi modela (Veljacic) <br>
+* Završni projekt iz IS2 (Juracic, Veljacic)
+
